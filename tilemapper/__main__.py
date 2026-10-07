@@ -10,7 +10,14 @@ from PySide6.QtWidgets import QApplication
 
 from tilemapper.window import MainWindow, apply_theme
 
-ICON = Path(__file__).resolve().parent / "icon.ico"
+def _icon_path() -> Path:
+    bundled = getattr(sys, "_MEIPASS", None)
+    if bundled:
+        return Path(bundled) / "icon.ico"
+    return Path(__file__).resolve().parent / "icon.ico"
+
+
+ICON = _icon_path()
 
 
 def main() -> None:
