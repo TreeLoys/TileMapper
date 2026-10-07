@@ -5,8 +5,14 @@ from __future__ import annotations
 import math
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPixmap
-from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsScene, QGraphicsView
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtWidgets import (
+    QGraphicsItem,
+    QGraphicsRectItem,
+    QGraphicsScene,
+    QGraphicsSimpleTextItem,
+    QGraphicsView,
+)
 
 from tilemapper.model import Grid, Tile, inclusive_rect, snapped_rect
 
@@ -73,6 +79,8 @@ class Canvas(QGraphicsView):
         self._ants_timer = QTimer(self)
         self._ants_timer.timeout.connect(self._tick_ants)
         self._ants_timer.start(70)
+        self._tile_labels = "none"
+        self._grid_labels = "none"
         self._apply_cursor()
 
     def set_world(
@@ -111,6 +119,10 @@ class Canvas(QGraphicsView):
             self._show_ants(self._cell_black, self._cell_white, None)
         self._apply_cursor()
 
+    def set_label_mode(self, tiles: str, grids: str) -> None:
+        self._tile_labels = tiles if tiles in ("none", "id", "name") else "none"
+        self._grid_labels = grids if grids in ("none", "name") else "none"
+
     def set_snap(self, enabled: bool) -> None:
         self._snap = enabled
 
@@ -142,7 +154,8 @@ class Canvas(QGraphicsView):
 
     def rebuild(self) -> None:
         transform = self.transform()
-        center = self.mapToScene(self.viewport().rect().center())
+        horizontal = self.horizontalScrollBar().value()
+        vertical = self.verticalScrollBar().value()
         self._pix_item = None
         self._tile_items = []
         self._rubber = None
@@ -171,6 +184,7 @@ class Canvas(QGraphicsView):
             item.setBrush(QBrush(QColor(107, 114, 128, 28)))
             item.setZValue(4)
             item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+            self._add_caption(self._tile_caption(tile), tile.x, tile.y, 6)
             bounds = bounds.united(QRectF(tile.x, tile.y, tile.w, tile.h))
         for index, grid in enumerate(self._grids):
             self._draw_grid(grid, index == self._active_index, taken)
@@ -188,6 +202,7 @@ class Canvas(QGraphicsView):
             item.setZValue(10)
             item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
             self._style_tile(item, tile.id == self._selected_id)
+            self._add_caption(self._tile_caption(tile), tile.x, tile.y, 16)
             self._tile_items.append((tile.id, item))
             bounds = bounds.united(QRectF(tile.x, tile.y, tile.w, tile.h))
 
@@ -199,7 +214,8 @@ class Canvas(QGraphicsView):
         pad = 80.0
         self.scene().setSceneRect(bounds.adjusted(-pad, -pad, pad, pad))
         self.setTransform(transform)
-        self.centerOn(center)
+        self.horizontalScrollBar().setValue(horizontal)
+        self.verticalScrollBar().setValue(vertical)
 
     def _make_overlay(self, color: str, fill: QColor) -> QGraphicsRectItem:
         item = self.scene().addRect(0, 0, 0, 0)
@@ -297,6 +313,8 @@ class Canvas(QGraphicsView):
         item = self.scene().addPath(path, pen)
         item.setZValue(2 if active else 1)
         item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        if self._grid_labels == "name" and grid.name.strip():
+            self._add_caption(grid.name.strip(), grid.x, grid.y, 8)
 
         if not active or grid.cols * grid.rows > 20000:
             return
@@ -312,6 +330,35 @@ class Canvas(QGraphicsView):
                 cell.setBrush(QBrush(fill))
                 cell.setZValue(3)
                 cell.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+
+    def _tile_caption(self, tile: Tile) -> str:
+        if self._tile_labels == "id":
+            return str(tile.id)
+        if self._tile_labels == "name":
+            return tile.name.strip() or "—"
+        return ""
+
+    def _add_caption(self, text: str, x: float, y: float, z: int) -> None:
+        if not text:
+            return
+        plate = QGraphicsRectItem()
+        plate.setBrush(QBrush(QColor(255, 255, 255, 230)))
+        plate.setPen(QPen(Qt.PenStyle.NoPen))
+        plate.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
+        plate.setPos(x + 1, y + 1)
+        plate.setZValue(z)
+        plate.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        caption = QGraphicsSimpleTextItem(text, plate)
+        font = QFont()
+        font.setPixelSize(11)
+        font.setBold(True)
+        caption.setFont(font)
+        caption.setBrush(QBrush(QColor("#1a1a1a")))
+        caption.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        bounds = caption.boundingRect()
+        caption.setPos(2, 1)
+        plate.setRect(0, 0, bounds.width() + 4, bounds.height() + 2)
+        self.scene().addItem(plate)
 
     def _style_tile(self, item: QGraphicsRectItem, selected: bool) -> None:
         if selected:

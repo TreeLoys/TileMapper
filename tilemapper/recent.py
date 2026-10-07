@@ -1,4 +1,4 @@
-"""Список всего, что открывали: картинки и JSON."""
+"""Список открытых проектов: только JSON."""
 
 from __future__ import annotations
 
@@ -28,10 +28,21 @@ def load_recent(store: Path | None = None) -> list[str]:
     return [str(item) for item in raw if isinstance(item, str) and item]
 
 
+def load_projects(store: Path | None = None) -> list[str]:
+    target = store or store_path()
+    items = load_recent(target)
+    projects = [item for item in items if _is_project(Path(item))]
+    if projects != items and target.is_file():
+        _write(target, projects)
+    return projects
+
+
 def remember(path: Path, store: Path | None = None) -> list[str]:
     target = store or store_path()
+    if not _is_project(Path(path)):
+        return load_projects(target)
     key = _key(Path(path))
-    items = [item for item in load_recent(target) if _key(Path(item)) != key]
+    items = [item for item in load_projects(target) if _key(Path(item)) != key]
     items.insert(0, key)
     del items[_LIMIT:]
     _write(target, items)
@@ -44,6 +55,10 @@ def forget(path: Path, store: Path | None = None) -> list[str]:
     items = [item for item in load_recent(target) if _key(Path(item)) != key]
     _write(target, items)
     return items
+
+
+def _is_project(path: Path) -> bool:
+    return path.suffix.lower() == ".json"
 
 
 def _key(path: Path) -> str:

@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tilemapper.recent import forget, load_recent, remember
+from tilemapper.recent import forget, load_projects, load_recent, remember
 from tilemapper.model import (
     Document,
     Grid,
@@ -214,6 +214,31 @@ class ModelTest(unittest.TestCase):
             self.assertEqual(loaded.tiles[0].extra["any_if_use"], 4)
             self.assertEqual(loaded.nametileset, "ground")
 
+    def test_label_modes_stay_in_editor_only(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            doc = Document(image="UI.png")
+            doc.tile_labels = "name"
+            doc.grid_labels = "name"
+            path = root / "ui.json"
+            doc.save(path)
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(raw["editor"]["tile_labels"], "name")
+            self.assertEqual(raw["editor"]["grid_labels"], "name")
+            loaded = Document.load(path)
+            self.assertEqual(loaded.tile_labels, "name")
+            self.assertEqual(loaded.grid_labels, "name")
+            clean = root / "clean.json"
+            doc.save(clean, include_editor=False)
+            exported = json.loads(clean.read_text(encoding="utf-8"))
+            self.assertNotIn("editor", exported)
+            bogus = dict(raw)
+            bogus["editor"] = {"tile_labels": "nope", "grid_labels": 3}
+            path.write_text(json.dumps(bogus), encoding="utf-8")
+            fallback = Document.load(path)
+            self.assertEqual(fallback.tile_labels, "none")
+            self.assertEqual(fallback.grid_labels, "none")
+
     def test_recent_keeps_opened_paths(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
@@ -225,12 +250,16 @@ class ModelTest(unittest.TestCase):
             remember(first, store)
             remember(second, store)
             remember(first, store)
+            self.assertEqual(load_projects(store), [str(second.resolve())])
+            third = root / "c.json"
+            third.write_text("{}", encoding="utf-8")
+            remember(third, store)
             recent = load_recent(store)
-            self.assertEqual(recent[0], str(first.resolve()))
+            self.assertEqual(recent[0], str(third.resolve()))
             self.assertEqual(recent[1], str(second.resolve()))
-            self.assertEqual(len(recent), 2)
+            self.assertNotIn(str(first.resolve()), recent)
             forget(second, store)
-            self.assertEqual(load_recent(store), [str(first.resolve())])
+            self.assertEqual(load_recent(store), [str(third.resolve())])
 
 
 if __name__ == "__main__":

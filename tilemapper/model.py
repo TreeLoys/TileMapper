@@ -74,6 +74,10 @@ def resolve_image(json_path: Path, image_field: str) -> Path:
     return (json_path.parent / path).resolve()
 
 
+def _choice(value: Any, allowed: set[str], default: str) -> str:
+    return value if isinstance(value, str) and value in allowed else default
+
+
 def inclusive_rect(x0: int, y0: int, x1: int, y1: int) -> tuple[int, int, int, int]:
     x, y = min(x0, x1), min(y0, y1)
     return x, y, abs(x1 - x0) + 1, abs(y1 - y0) + 1
@@ -246,6 +250,8 @@ class Document:
     mode: str = "array"
     grids: list[Grid] = field(default_factory=list)
     zoom: float | None = None
+    tile_labels: str = "none"
+    grid_labels: str = "none"
     path: Path | None = None
     image_path: Path | None = None
     extra_root: dict[str, Any] = field(default_factory=dict)
@@ -414,6 +420,8 @@ class Document:
                 "active": self.active_index,
                 "visible": [tileset.visible for tileset in self.tilesets],
                 "grids": [grid.to_json() for grid in self.grids],
+                "tile_labels": self.tile_labels,
+                "grid_labels": self.grid_labels,
             }
         return data
 
@@ -464,6 +472,8 @@ class Document:
             active_index = int(active)
         except (TypeError, ValueError):
             active_index = 0
+        tile_labels = _choice(editor.get("tile_labels"), {"none", "id", "name"}, "none")
+        grid_labels = _choice(editor.get("grid_labels"), {"none", "name"}, "none")
         image_field = str(raw.get("image", ""))
         extra_root = {key: value for key, value in raw.items() if key not in ROOT_FIELDS}
         return cls(
@@ -473,6 +483,8 @@ class Document:
             mode=mode,
             grids=grids,
             zoom=zoom,
+            tile_labels=tile_labels,
+            grid_labels=grid_labels,
             path=path,
             image_path=resolve_image(path, image_field) if image_field else None,
             extra_root=extra_root,
